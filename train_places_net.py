@@ -97,13 +97,13 @@ def conv_relu(bottom, ks, nout, stride=1, pad=0, group=1,
                          num_output=nout, pad=pad, group=group, param=param,
                          weight_filler=weight_filler, bias_filler=bias_filler,
                          **engine)
-    return conv, L.ReLU(conv, in_place=True)
+    return conv, L.ReLU(conv, in_place=True, negative_slope=0.01)
 
 def fc_relu(bottom, nout, param=learned_param,
             weight_filler=fc_filler, bias_filler=zero_filler):
     fc = L.InnerProduct(bottom, num_output=nout, param=param,
                         weight_filler=weight_filler, bias_filler=bias_filler)
-    return fc, L.ReLU(fc, in_place=True)
+    return fc, L.ReLU(fc, in_place=True, negative_slope=0.01)
 
 def max_pool(bottom, ks, stride=1, train=False):
     # set CAFFE engine to avoid CuDNN pooling -- non-deterministic results
@@ -135,9 +135,9 @@ def minialexnet(data, labels=None, train=False, param=learned_param,
     n.conv4, n.relu4 = conv_relu(n.relu3, 3, 384, pad=1, group=2, **conv_kwargs)
     n.conv5, n.relu5 = conv_relu(n.relu4, 3, 256, pad=1, group=2, **conv_kwargs)
     n.pool5 = max_pool(n.relu5, 3, stride=2, train=train)
-    n.fc6, n.relu6 = fc_relu(n.pool5, 1024, param=param)
+    n.fc6, n.relu6 = fc_relu(n.pool5, 2048, param=param)
     n.drop6 = L.Dropout(n.relu6, in_place=True)
-    n.fc7, n.relu7 = fc_relu(n.drop6, 1024, param=param)
+    n.fc7, n.relu7 = fc_relu(n.drop6, 2048, param=param)
     n.drop7 = L.Dropout(n.relu7, in_place=True)
     preds = n.fc8 = L.InnerProduct(n.drop7, num_output=num_classes, param=param)
     if not train:
