@@ -6,3 +6,5 @@ log/
 snapshot/
 *.swp
 *.swo
+.ipynb_checkpoints
+*.pyc

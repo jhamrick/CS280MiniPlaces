@@ -7,45 +7,7 @@ import numpy as np
 import os
 import tempfile
 import time
-
-parser = argparse.ArgumentParser(
-    description='Train and evaluate a net on the MIT mini-places dataset.')
-parser.add_argument('--image_root', default='./images/',
-    help='Directory where images are stored')
-parser.add_argument('--crop', type=int, default=96,
-    help=('The edge length of the random image crops'
-          '(defaults to 96 for 96x96 crops)'))
-parser.add_argument('--disp', type=int, default=10,
-    help='Print loss/accuracy every --disp training iterations')
-parser.add_argument('--snapshot_dir', default='./snapshot',
-    help='Path to directory where snapshots are saved')
-parser.add_argument('--snapshot_prefix', default='place_net',
-    help='Snapshot filename prefix')
-parser.add_argument('--iters', type=int, default=50*1000,
-    help='Total number of iterations to train the network')
-parser.add_argument('--batch', type=int, default=256,
-    help='The batch size to use for training')
-parser.add_argument('--iter_size', type=int, default=1,
-    help=('The number of iterations (batches) over which to average the '
-          'gradient computation. Effectively increases the batch size '
-          '(--batch) by this factor, but without increasing memory use '))
-parser.add_argument('--lr', type=float, default=0.01,
-    help='The initial learning rate')
-parser.add_argument('--gamma', type=float, default=0.1,
-    help='Factor by which to drop the learning rate')
-parser.add_argument('--stepsize', type=int, default=10*1000,
-    help='Drop the learning rate every N iters -- this specifies N')
-parser.add_argument('--momentum', type=float, default=0.9,
-    help='The momentum hyperparameter to use for momentum SGD')
-parser.add_argument('--decay', type=float, default=5e-4,
-    help='The L2 weight decay coefficient')
-parser.add_argument('--seed', type=int, default=1,
-    help='Seed for the random number generator')
-parser.add_argument('--cudnn', action='store_true',
-    help='Use CuDNN at training time -- usually faster, but non-deterministic')
-parser.add_argument('--gpu', type=int, default=0,
-    help='GPU ID to use for training and inference (-1 for CPU)')
-args = parser.parse_args()
+import sys
 
 # disable most Caffe logging (unless env var $GLOG_minloglevel is already set)
 key = 'GLOG_minloglevel'
@@ -56,12 +18,6 @@ import caffe
 from caffe.proto import caffe_pb2
 from caffe import layers as L
 from caffe import params as P
-
-if args.gpu >= 0:
-    caffe.set_mode_gpu()
-    caffe.set_device(args.gpu)
-else:
-    caffe.set_mode_cpu()
 
 def to_tempfile(file_content):
     """Serialize a Python protobuf object str(proto), dump to a temporary file,
@@ -85,13 +41,16 @@ fc_filler       = dict(type='gaussian', std=0.005)
 # conv_filler     = dict(type='gaussian', std=0.01)
 conv_filler     = dict(type='msra')
 
+MEAN = [104, 117, 123]  # per-channel mean of the BGR image pixels
+
+
 def conv_relu(bottom, ks, nout, stride=1, pad=0, group=1,
               param=learned_param,
               weight_filler=conv_filler, bias_filler=zero_filler,
-              train=False):
+              train=False, cudnn=False):
     # set CAFFE engine to avoid CuDNN convolution -- non-deterministic results
     engine = {}
-    if train and not args.cudnn:
+    if train and not cudnn:
         engine.update(engine=P.Pooling.CAFFE)
     conv = L.Convolution(bottom, kernel_size=ks, stride=stride,
                          num_output=nout, pad=pad, group=group, param=param,
@@ -99,21 +58,24 @@ def conv_relu(bottom, ks, nout, stride=1, pad=0, group=1,
                          **engine)
     return conv, L.ReLU(conv, in_place=True, negative_slope=0.01)
 
+
 def fc_relu(bottom, nout, param=learned_param,
             weight_filler=fc_filler, bias_filler=zero_filler):
     fc = L.InnerProduct(bottom, num_output=nout, param=param,
                         weight_filler=weight_filler, bias_filler=bias_filler)
     return fc, L.ReLU(fc, in_place=True, negative_slope=0.01)
 
-def max_pool(bottom, ks, stride=1, train=False):
+
+def max_pool(bottom, ks, stride=1, train=False, cudnn=False):
     # set CAFFE engine to avoid CuDNN pooling -- non-deterministic results
     engine = {}
-    if train and not args.cudnn:
+    if train and not cudnn:
         engine.update(engine=P.Pooling.CAFFE)
     return L.Pooling(bottom, pool=P.Pooling.MAX, kernel_size=ks, stride=stride,
                      **engine)
 
-def minialexnet(data, labels=None, train=False, param=learned_param,
+
+def minialexnet(data, labels=None, train=False, cudnn=False, param=learned_param,
                 num_classes=100, with_labels=True):
     """
     Returns a protobuf text file specifying a variant of AlexNet, following the
@@ -126,15 +88,15 @@ def minialexnet(data, labels=None, train=False, param=learned_param,
     """
     n = caffe.NetSpec()
     n.data = data
-    conv_kwargs = dict(param=param, train=train)
+    conv_kwargs = dict(param=param, train=train, cudnn=cudnn)
     n.conv1, n.relu1 = conv_relu(n.data, 15, 96, stride=4, **conv_kwargs)
-    n.pool1 = max_pool(n.relu1, 3, stride=2, train=train)
+    n.pool1 = max_pool(n.relu1, 3, stride=2, train=train, cudnn=cudnn)
     n.conv2, n.relu2 = conv_relu(n.pool1, 5, 256, pad=2, group=2, **conv_kwargs)
-    n.pool2 = max_pool(n.relu2, 3, stride=2, train=train)
+    n.pool2 = max_pool(n.relu2, 3, stride=2, train=train, cudnn=cudnn)
     n.conv3, n.relu3 = conv_relu(n.pool2, 3, 384, pad=1, **conv_kwargs)
     n.conv4, n.relu4 = conv_relu(n.relu3, 3, 384, pad=1, group=2, **conv_kwargs)
     n.conv5, n.relu5 = conv_relu(n.relu4, 3, 256, pad=1, group=2, **conv_kwargs)
-    n.pool5 = max_pool(n.relu5, 3, stride=2, train=train)
+    n.pool5 = max_pool(n.relu5, 3, stride=2, train=train, cudnn=cudnn)
     n.fc6, n.relu6 = fc_relu(n.pool5, 2048, param=param)
     n.drop6 = L.Dropout(n.relu6, in_place=True)
     n.fc7, n.relu7 = fc_relu(n.drop6, 2048, param=param)
@@ -154,27 +116,28 @@ def minialexnet(data, labels=None, train=False, param=learned_param,
         n.silence_label = L.Silence(n.ignored_label, ntop=0)
     return to_tempfile(str(n.to_proto()))
 
-def minivggnet(data, labels=None, train=False, param=learned_param,
+
+def minivggnet(data, labels=None, train=False, cudnn=False, param=learned_param,
                 num_classes=100, with_labels=True):
     """
     Returns a protobuf text file specifying a variant of VGG
     """
     n = caffe.NetSpec()
     n.data = data
-    conv_kwargs = dict(param=param, train=train)
+    conv_kwargs = dict(param=param, train=train, cudnn=cudnn)
     n.conv1, n.relu1 = conv_relu(n.data, 7, 96, stride=2, **conv_kwargs)
     n.norm1 = L.LRN(n.relu1, local_size=5, alpha=0.0005, beta=0.75)
-    n.pool1 = max_pool(n.norm1, 3, stride=3, train=train)
+    n.pool1 = max_pool(n.norm1, 3, stride=3, train=train, cudnn=cudnn)
     n.conv2, n.relu2 = conv_relu(n.pool1, 5, 256, group=2, **conv_kwargs)
-    n.pool2 = max_pool(n.relu2, 2, stride=2, train=train)
+    n.pool2 = max_pool(n.relu2, 2, stride=2, train=train, cudnn=cudnn)
     n.conv3, n.relu3 = conv_relu(n.pool2, 3, 512, pad=1, **conv_kwargs)
     n.conv4, n.relu4 = conv_relu(n.relu3, 3, 512, pad=1, group=2, **conv_kwargs)
     n.conv5, n.relu5 = conv_relu(n.relu4, 4, 512, pad=1, group=2, **conv_kwargs)
-    n.pool5 = max_pool(n.relu5, 3, stride=3, train=train)
+    n.pool5 = max_pool(n.relu5, 3, stride=3, train=train, cudnn=cudnn)
     n.conv6, n.relu6 = conv_relu(n.pool5, 3, 384, pad=1, **conv_kwargs)
     n.conv7, n.relu7 = conv_relu(n.relu6, 3, 384, pad=1, group=2, **conv_kwargs)
     n.conv8, n.relu8 = conv_relu(n.relu7, 3, 256, pad=1, group=2, **conv_kwargs)
-    n.pool8 = max_pool(n.relu8, 3, stride=2, train=train)
+    n.pool8 = max_pool(n.relu8, 3, stride=2, train=train, cudnn=cudnn)
     n.fc9, n.relu9 = fc_relu(n.pool8, 2048, param=param)
     n.drop9 = L.Dropout(n.relu9, in_place=True)
     n.fc10, n.relu10 = fc_relu(n.drop9, 1024, param=param)
@@ -194,31 +157,35 @@ def minivggnet(data, labels=None, train=False, param=learned_param,
         n.silence_label = L.Silence(n.ignored_label, ntop=0)
     return to_tempfile(str(n.to_proto()))
 
+
 def get_split(split):
     filename = './development_kit/data/%s.txt' % split
     if not os.path.exists(filename):
         raise IOError('Split data file not found: %s' % split)
     return filename
 
-def miniplaces_net(source, train=False, with_labels=True):
-    mean = [104, 117, 123]  # per-channel mean of the BGR image pixels
-    transform_param = dict(mirror=train, crop_size=args.crop, mean_value=mean)
-    batch_size = args.batch if train else 100
+
+def miniplaces_net(source, crop, batch, image_root, train=False, cudnn=False, with_labels=True):
+    transform_param = dict(mirror=train, crop_size=crop, mean_value=MEAN)
+    batch_size = batch if train else 100
     places_data, places_labels = L.ImageData(transform_param=transform_param,
-        source=source, root_folder=args.image_root, shuffle=train,
+        source=source, root_folder=image_root, shuffle=train,
         batch_size=batch_size, ntop=2)
-    #return minialexnet(data=places_data, labels=places_labels, train=train,
+    #return minialexnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
     #                   with_labels=with_labels)
-    return minivggnet(data=places_data, labels=places_labels, train=train,
+    return minivggnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
                        with_labels=with_labels)
 
-def snapshot_prefix():
-    return os.path.join(args.snapshot_dir, args.snapshot_prefix)
 
-def snapshot_at_iteration(iteration):
-    return '%s_iter_%d.caffemodel' % (snapshot_prefix(), iteration)
+def snapshot_prefix(dirname, prefix):
+    return os.path.join(dirname, prefix)
 
-def miniplaces_solver(train_net_path, test_net_path=None):
+
+def snapshot_at_iteration(iteration, dirname, prefix):
+    return '%s_iter_%d.caffemodel' % (snapshot_prefix(dirname, prefix), iteration)
+
+
+def miniplaces_solver(args, train_net_path, test_net_path=None):
     s = caffe_pb2.SolverParameter()
 
     # Specify locations of the train and (maybe) test networks.
@@ -287,7 +254,7 @@ def miniplaces_solver(train_net_path, test_net_path=None):
     # snapshot twice per learning rate step to the location specified by the
     # --snapshot_dir and --snapshot_prefix args.
     s.snapshot = args.stepsize // 2
-    s.snapshot_prefix = snapshot_prefix()
+    s.snapshot_prefix = snapshot_prefix(args.snapshot_dir, args.snapshot_prefix)
 
     # Create snapshot dir if it doesn't already exist.
     if not os.path.exists(args.snapshot_dir):
@@ -295,17 +262,22 @@ def miniplaces_solver(train_net_path, test_net_path=None):
 
     return to_tempfile(str(s))
 
-def train_net(with_val_net=False):
-    train_net_file = miniplaces_net(get_split('train'), train=True)
+
+def train_net(args, with_val_net=False):
+    train_net_file = miniplaces_net(
+        get_split('train'), args.crop, args.batch, args.image_root, 
+        train=True, cudnn=args.cudnn)
     # Set with_val_net=True to test during training.
     # Environment variable GLOG_minloglevel should be set to 0 to display
     # Caffe output in this case; otherwise, the test result will not be
     # displayed.
     if with_val_net:
-        val_net_file = miniplaces_net(get_split('val'), train=False)
+        val_net_file = miniplaces_net(
+            get_split('val'), args.crop, args.batch, args.image_root,
+            train=False, cudnn=args.cudnn)
     else:
         val_net_file = None
-    solver_file = miniplaces_solver(train_net_file, val_net_file)
+    solver_file = miniplaces_solver(args, train_net_file, val_net_file)
     solver = caffe.get_solver(solver_file)
     outputs = sorted(solver.net.outputs)
     def str_output(output):
@@ -336,9 +308,10 @@ def train_net(with_val_net=False):
     # Print accuracy for last iteration.
     solver.net.forward()
     disp_outputs(args.iters)
-    solver.net.save(snapshot_at_iteration(args.iters))
+    solver.net.save(snapshot_at_iteration(args.iters, args.snapshot_dir, args.snapshot_prefix))
 
-def eval_net(split, K=5):
+
+def eval_net(split, args, K=5):
     print 'Running evaluation for split:', split
     filenames = []
     labels = []
@@ -356,8 +329,10 @@ def eval_net(split, K=5):
     else:
         # create file with 'dummy' labels (all 0s)
         split_file = to_tempfile(''.join('%s 0\n' % name for name in filenames))
-    test_net_file = miniplaces_net(split_file, train=False, with_labels=False)
-    weights_file = snapshot_at_iteration(args.iters)
+    test_net_file = miniplaces_net(
+        split_file, args.crop, args.batch, args.image_root,
+        train=False, cudnn=args.cudnn, with_labels=False)
+    weights_file = snapshot_at_iteration(args.iters, args.snapshot_dir, args.snapshot_prefix)
     net = caffe.Net(test_net_file, weights_file, caffe.TEST)
     top_k_predictions = np.zeros((len(filenames), K), dtype=np.int32)
     if known_labels:
@@ -392,12 +367,58 @@ def eval_net(split, K=5):
                         for image, preds in zip(filenames, top_k_predictions)))
     print 'Predictions for split %s dumped to: %s' % (split, filename)
 
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description='Train and evaluate a net on the MIT mini-places dataset.')
+    parser.add_argument('--image_root', default='./images/',
+        help='Directory where images are stored')
+    parser.add_argument('--crop', type=int, default=96,
+        help=('The edge length of the random image crops'
+              '(defaults to 96 for 96x96 crops)'))
+    parser.add_argument('--disp', type=int, default=10,
+        help='Print loss/accuracy every --disp training iterations')
+    parser.add_argument('--snapshot_dir', default='./snapshot',
+        help='Path to directory where snapshots are saved')
+    parser.add_argument('--snapshot_prefix', default='place_net',
+        help='Snapshot filename prefix')
+    parser.add_argument('--iters', type=int, default=50*1000,
+        help='Total number of iterations to train the network')
+    parser.add_argument('--batch', type=int, default=256,
+        help='The batch size to use for training')
+    parser.add_argument('--iter_size', type=int, default=1,
+        help=('The number of iterations (batches) over which to average the '
+              'gradient computation. Effectively increases the batch size '
+              '(--batch) by this factor, but without increasing memory use '))
+    parser.add_argument('--lr', type=float, default=0.01,
+        help='The initial learning rate')
+    parser.add_argument('--gamma', type=float, default=0.1,
+        help='Factor by which to drop the learning rate')
+    parser.add_argument('--stepsize', type=int, default=10*1000,
+        help='Drop the learning rate every N iters -- this specifies N')
+    parser.add_argument('--momentum', type=float, default=0.9,
+        help='The momentum hyperparameter to use for momentum SGD')
+    parser.add_argument('--decay', type=float, default=5e-4,
+        help='The L2 weight decay coefficient')
+    parser.add_argument('--seed', type=int, default=1,
+        help='Seed for the random number generator')
+    parser.add_argument('--cudnn', action='store_true',
+        help='Use CuDNN at training time -- usually faster, but non-deterministic')
+    parser.add_argument('--gpu', type=int, default=0,
+        help='GPU ID to use for training and inference (-1 for CPU)')
+    _args = parser.parse_args()
+
+    if _args.gpu >= 0:
+        caffe.set_mode_gpu()
+        caffe.set_device(_args.gpu)
+    else:
+        caffe.set_mode_cpu()
+
     print 'Training net...\n'
-    train_net()
+    train_net(_args)
 
     print '\nTraining complete. Evaluating...\n'
     for split in ('train', 'val', 'test'):
-        eval_net(split)
+        eval_net(split, _args)
         print
     print 'Evaluation complete.'
