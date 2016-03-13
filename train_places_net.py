@@ -89,17 +89,19 @@ def minialexnet(data, labels=None, train=False, cudnn=False, param=learned_param
     n = caffe.NetSpec()
     n.data = data
     conv_kwargs = dict(param=param, train=train, cudnn=cudnn)
-    n.conv1, n.relu1 = conv_relu(n.data, 15, 96, stride=4, **conv_kwargs)
-    n.pool1 = max_pool(n.relu1, 3, stride=2, train=train, cudnn=cudnn)
+    n.conv1, n.relu1 = conv_relu(n.data, 11, 96, stride=4, **conv_kwargs)
+    n.norm1 = L.LRN(n.relu1, local_size=5, alpha=0.0001, beta=0.75)
+    n.pool1 = max_pool(n.norm1, 3, stride=2, train=train, cudnn=cudnn)
     n.conv2, n.relu2 = conv_relu(n.pool1, 5, 256, pad=2, group=2, **conv_kwargs)
-    n.pool2 = max_pool(n.relu2, 3, stride=2, train=train, cudnn=cudnn)
+    n.norm2 = L.LRN(n.relu2, local_size=5, alpha=0.0001, beta=0.75)
+    n.pool2 = max_pool(n.norm2, 3, stride=2, train=train, cudnn=cudnn)
     n.conv3, n.relu3 = conv_relu(n.pool2, 3, 384, pad=1, **conv_kwargs)
     n.conv4, n.relu4 = conv_relu(n.relu3, 3, 384, pad=1, group=2, **conv_kwargs)
     n.conv5, n.relu5 = conv_relu(n.relu4, 3, 256, pad=1, group=2, **conv_kwargs)
     n.pool5 = max_pool(n.relu5, 3, stride=2, train=train, cudnn=cudnn)
-    n.fc6, n.relu6 = fc_relu(n.pool5, 2048, param=param)
+    n.fc6, n.relu6 = fc_relu(n.pool5, 1024, param=param)
     n.drop6 = L.Dropout(n.relu6, in_place=True)
-    n.fc7, n.relu7 = fc_relu(n.drop6, 2048, param=param)
+    n.fc7, n.relu7 = fc_relu(n.drop6, 1024, param=param)
     n.drop7 = L.Dropout(n.relu7, in_place=True)
     preds = n.fc8 = L.InnerProduct(n.drop7, num_output=num_classes, param=param)
     if not train:
@@ -171,10 +173,10 @@ def miniplaces_net(source, crop, batch, image_root, train=False, cudnn=False, wi
     places_data, places_labels = L.ImageData(transform_param=transform_param,
         source=source, root_folder=image_root, shuffle=train,
         batch_size=batch_size, ntop=2)
-    #return minialexnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
-    #                   with_labels=with_labels)
-    return minivggnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
+    return minialexnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
                        with_labels=with_labels)
+    #return minivggnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
+    #                   with_labels=with_labels)
 
 
 def snapshot_prefix(dirname, prefix):
@@ -415,7 +417,7 @@ if __name__ == '__main__':
         caffe.set_mode_cpu()
 
     print 'Training net...\n'
-    train_net(_args)
+    #train_net(_args)
 
     print '\nTraining complete. Evaluating...\n'
     for split in ('train', 'val', 'test'):
