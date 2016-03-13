@@ -3,7 +3,7 @@ development_kit
 images
 objects
 log/
-snapshot/
+snapshot*
 *.swp
 *.swo
 .ipynb_checkpoints
