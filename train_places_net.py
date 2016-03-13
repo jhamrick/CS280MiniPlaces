@@ -417,7 +417,7 @@ if __name__ == '__main__':
         caffe.set_mode_cpu()
 
     print 'Training net...\n'
-    #train_net(_args)
+    train_net(_args)
 
     print '\nTraining complete. Evaluating...\n'
     for split in ('train', 'val', 'test'):
