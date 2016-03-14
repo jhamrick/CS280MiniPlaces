@@ -128,7 +128,7 @@ def minivggnet(data, labels=None, train=False, cudnn=False, param=learned_param,
     n = caffe.NetSpec()
     n.data = data
     conv_kwargs = dict(param=param, train=train, cudnn=cudnn)
-    n.conv1, n.relu1 = conv_relu(n.data, 11, 124, stride=2, **conv_kwargs)
+    n.conv1, n.relu1 = conv_relu(n.data, 25, 144, stride=2, **conv_kwargs)
     n.norm1 = L.LRN(n.relu1, local_size=5, alpha=0.0005, beta=0.75, k=2)
     n.pool1 = max_pool(n.norm1, 3, stride=2, train=train, cudnn=cudnn)
     n.conv2, n.relu2 = conv_relu(n.pool1, 5, 256, pad=1, stride=2, group=2, **conv_kwargs)
