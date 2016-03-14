@@ -150,3 +150,13 @@ def make_weights(N=7):
             weights[i * len(filters) + j] = colorize(filt, rgb)
             
     return weights
+
+
+def make_lm_filters():
+    F = scipy.io.loadmat("F.mat")['F'].transpose((2, 0, 1))[:, 12:-12, 12:-12]
+    filts = np.empty((144, 3, 25, 25))
+    for i, filt in enumerate(F):
+        filts[i] = colorize(filt, [1, 1, 1])
+        filts[i+48] = colorize(filt, [1, 0, 1])
+        filts[i+96] = colorize(filt, [1, 1, 0])
+    return filts
