@@ -8,6 +8,7 @@ import os
 import tempfile
 import time
 import sys
+import weights
 
 # disable most Caffe logging (unless env var $GLOG_minloglevel is already set)
 key = 'GLOG_minloglevel'
@@ -278,6 +279,9 @@ def train_net(args, with_val_net=False):
         val_net_file = None
     solver_file = miniplaces_solver(args, train_net_file, val_net_file)
     solver = caffe.get_solver(solver_file)
+    solver.net.params['conv1'][0].data[...] = weights.make_weights()
+    if args.weights_file:
+        solver.net.copy_from(args.weights_file)
     outputs = sorted(solver.net.outputs)
     def str_output(output):
         value = solver.net.blobs[output].data
@@ -405,6 +409,8 @@ if __name__ == '__main__':
         help='Use CuDNN at training time -- usually faster, but non-deterministic')
     parser.add_argument('--gpu', type=int, default=0,
         help='GPU ID to use for training and inference (-1 for CPU)')
+    parser.add_argument('--weights', dest="weights_file", type=str, default='',
+        help='Path to weights file from which to initialize network')
     _args = parser.parse_args()
 
     if _args.gpu >= 0:
