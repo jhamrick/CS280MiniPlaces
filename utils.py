@@ -14,21 +14,29 @@ def load_labels():
 
 
 def load_net(iters, i, labels):
+    try:
+        n = len(i)
+    except TypeError:
+        n = 1
+        i = [i]
+    
     with open(get_split('val'), 'r') as fh:
-        images = fh.read().split("\n")
-    print("True category is: {}".format(labels[int(images[i].split(" ")[1])]))
-    source = to_tempfile(images[i])
-
+        images = np.array(fh.read().split("\n"))
+        
+    if n == 1:
+        print("True category is: {}".format(labels[int(images[i[0]].split(" ")[1])]))
+    
+    source = to_tempfile("\n".join(images[i]))
     transform_param = dict(mirror=False, crop_size=96, mean_value=MEAN)
     places_data, places_labels = L.ImageData(
         transform_param=transform_param,
         source=source, root_folder='./images/', 
-        shuffle=False, batch_size=1, ntop=2)
+        shuffle=False, batch_size=n, ntop=2)
     net_path = minivggnet(
         data=places_data, labels=places_labels,
         train=False, cudnn=False, with_labels=False)
     
-    net = caffe.Net(net_path, 'snapshot/place_net_iter_{}.caffemodel'.format(iters), caffe.TEST)
+    net = caffe.Net(net_path, 'snapshot_vgg2/place_net_iter_{}.caffemodel'.format(iters), caffe.TEST)
 
     # input preprocessing: 'data' is the name of the input blob == net.inputs[0]
     transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})

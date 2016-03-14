@@ -154,12 +154,18 @@ def make_weights(N=7):
 
 
 def make_lm_filters():
-    F = scipy.io.loadmat("F.mat")['F'].transpose((2, 0, 1))[:, 12:-12, 12:-12]
-    idx = range(24, 36) + [39, 40, 41, 45, 46, 47]
+    F = scipy.io.loadmat("F.mat")['F'].transpose((2, 0, 1))[:, 21:-21, 21:-21]
+    Fmin = F.min(axis=1).min(axis=1)[:, None, None]
+    Fmax = F.max(axis=1).max(axis=1)[:, None, None]
+    F = ((F - Fmin) / (Fmax - Fmin)) - 0.5
+    idx = range(18, 24) + [37, 38, 39]
     F = F[idx]
-    filts = np.empty((54, 3, 25, 25))
+    filts = np.empty((54, 3, 7, 7))
     for i, filt in enumerate(F):
         filts[i] = colorize(filt, [1, 1, 1])
+        filts[i+9] = -colorize(filt, [1, 1, 1])
         filts[i+18] = colorize(filt, [1, 0, 1])
+        filts[i+27] = -colorize(filt, [1, 0, 1])
         filts[i+36] = colorize(filt, [1, 1, 0])
+        filts[i+45] = -colorize(filt, [1, 1, 0])
     return filts
