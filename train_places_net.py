@@ -128,29 +128,26 @@ def minivggnet(data, labels=None, train=False, cudnn=False, param=learned_param,
     n.data = data
     conv_kwargs = dict(param=param, train=train, cudnn=cudnn)
     n.conv1, n.relu1 = conv_relu(n.data, 7, 96, stride=2, **conv_kwargs)
-    n.norm1 = L.LRN(n.relu1, local_size=5, alpha=0.0005, beta=0.75)
-    n.pool1 = max_pool(n.norm1, 3, stride=3, train=train, cudnn=cudnn)
-    n.conv2, n.relu2 = conv_relu(n.pool1, 5, 256, group=2, **conv_kwargs)
-    n.pool2 = max_pool(n.relu2, 2, stride=2, train=train, cudnn=cudnn)
+    n.norm1 = L.LRN(n.relu1, local_size=5, alpha=0.0005, beta=0.75, k=2)
+    n.pool1 = max_pool(n.norm1, 3, stride=2, train=train, cudnn=cudnn)
+    n.conv2, n.relu2 = conv_relu(n.pool1, 5, 256, pad=1, stride=2, group=2, **conv_kwargs)
+    n.norm2 = L.LRN(n.relu2, local_size=5, alpha=0.0005, beta=0.75, k=2)
+    n.pool2 = max_pool(n.norm2, 3, stride=2, train=train, cudnn=cudnn)
     n.conv3, n.relu3 = conv_relu(n.pool2, 3, 512, pad=1, **conv_kwargs)
     n.conv4, n.relu4 = conv_relu(n.relu3, 3, 512, pad=1, group=2, **conv_kwargs)
-    n.conv5, n.relu5 = conv_relu(n.relu4, 4, 512, pad=1, group=2, **conv_kwargs)
-    n.pool5 = max_pool(n.relu5, 3, stride=3, train=train, cudnn=cudnn)
-    n.conv6, n.relu6 = conv_relu(n.pool5, 3, 384, pad=1, **conv_kwargs)
-    n.conv7, n.relu7 = conv_relu(n.relu6, 3, 384, pad=1, group=2, **conv_kwargs)
-    n.conv8, n.relu8 = conv_relu(n.relu7, 3, 256, pad=1, group=2, **conv_kwargs)
-    n.pool8 = max_pool(n.relu8, 3, stride=2, train=train, cudnn=cudnn)
-    n.fc9, n.relu9 = fc_relu(n.pool8, 2048, param=param)
-    n.drop9 = L.Dropout(n.relu9, in_place=True)
-    n.fc10, n.relu10 = fc_relu(n.drop9, 1024, param=param)
-    n.drop10 = L.Dropout(n.relu10, in_place=True)   
-    preds = n.fc11 = L.InnerProduct(n.drop10, num_output=num_classes, param=param)
+    n.conv5, n.relu5 = conv_relu(n.relu4, 3, 512, pad=1, group=2, **conv_kwargs)
+    n.pool5 = max_pool(n.relu5, 3, stride=2, train=train, cudnn=cudnn)
+    n.fc6, n.relu6 = fc_relu(n.pool5, 1024, param=param)
+    n.drop6 = L.Dropout(n.relu6, in_place=True)
+    n.fc7, n.relu7 = fc_relu(n.drop6, 128, param=param)
+    n.drop7 = L.Dropout(n.relu7, in_place=True)   
+    preds = n.fc8 = L.InnerProduct(n.drop7, num_output=num_classes, param=param)
     if not train:
         # Compute the per-label probabilities at test/inference time.
-        preds = n.probs = L.Softmax(n.fc11)
+        preds = n.probs = L.Softmax(n.fc8)
     if with_labels:
         n.label = labels
-        n.loss = L.SoftmaxWithLoss(n.fc11, n.label)
+        n.loss = L.SoftmaxWithLoss(n.fc8, n.label)
         n.accuracy_at_1 = L.Accuracy(preds, n.label)
         n.accuracy_at_5 = L.Accuracy(preds, n.label,
                                      accuracy_param=dict(top_k=5))
@@ -173,10 +170,10 @@ def miniplaces_net(source, crop, batch, image_root, train=False, cudnn=False, wi
     places_data, places_labels = L.ImageData(transform_param=transform_param,
         source=source, root_folder=image_root, shuffle=train,
         batch_size=batch_size, ntop=2)
-    return minialexnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
-                       with_labels=with_labels)
-    #return minivggnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
+    #return minialexnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
     #                   with_labels=with_labels)
+    return minivggnet(data=places_data, labels=places_labels, train=train, cudnn=cudnn,
+                       with_labels=with_labels)
 
 
 def snapshot_prefix(dirname, prefix):
