@@ -3,6 +3,7 @@ import re
 import skimage.io
 import skimage.color
 import numpy as np
+import argparse
 
 
 def change_saturation(image, saturation):
@@ -16,9 +17,9 @@ def change_saturation(image, saturation):
     return skimage.color.hsv2rgb(image_hsv)
 
 
-def augment(N=9):
+def augment(N, image_root):
     images = []
-    root = 'images/train'
+    root = os.path.join(image_root, 'train')
     for dirname, dirnames, filenames in os.walk(root):
         for filename in filenames:
             if re.match("[0-9]+.jpg", filename):
@@ -45,4 +46,12 @@ def augment(N=9):
             
 
 if __name__ == "__main__":
-    augment()
+    parser = argparse.ArgumentParser(
+        description='Train and evaluate a net on the MIT mini-places dataset.')
+    parser.add_argument('--image_root', default='./images/',
+        help='Directory where images are stored')
+    parser.add_argument('--N', default=9, type=int,
+        help='Number of new images to generate')
+    args = parser.parse_args()
+    
+    augment(args.N, args.image_root)
