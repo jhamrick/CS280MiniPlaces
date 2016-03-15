@@ -36,7 +36,7 @@ def load_net(iters, i, labels):
         data=places_data, labels=places_labels,
         train=False, cudnn=False, with_labels=False)
     
-    net = caffe.Net(net_path, 'snapshot_vgg2/place_net_iter_{}.caffemodel'.format(iters), caffe.TEST)
+    net = caffe.Net(net_path, 'snapshot/place_net_iter_{}.caffemodel'.format(iters), caffe.TEST)
 
     # input preprocessing: 'data' is the name of the input blob == net.inputs[0]
     transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
