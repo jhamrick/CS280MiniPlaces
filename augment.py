@@ -31,7 +31,6 @@ def augment(N=9):
         path, name = os.path.split(image_path)
         cat = os.path.relpath(path, root)
         idx = int(categories[categories[:, 0] == "/" + cat, 1][0])
-        fh.write("{} {}\n".format(os.path.join("train", cat, name), idx))
 
         image = skimage.io.imread(image_path)
         for saturation in np.linspace(0, 2, N):
