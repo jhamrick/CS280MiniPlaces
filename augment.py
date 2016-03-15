@@ -16,7 +16,7 @@ def change_saturation(image, saturation):
     return skimage.color.hsv2rgb(image_hsv)
 
 
-def augment(N=10):
+def augment(N=9):
     images = []
     root = 'images/train'
     for dirname, dirnames, filenames in os.walk(root):
@@ -35,9 +35,6 @@ def augment(N=10):
 
         image = skimage.io.imread(image_path)
         for saturation in np.linspace(0, 2, N):
-            if saturation == 1:
-                continue
-
             new_image_name = "{}-{}.jpg".format(os.path.splitext(name)[0], saturation)
             new_image_path = os.path.join(path, new_image_name)
             fh.write("{} {}\n".format(os.path.join("train", cat, new_image_name), idx))
