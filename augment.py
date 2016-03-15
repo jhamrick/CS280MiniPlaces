@@ -39,7 +39,12 @@ def augment(N, image_root):
             new_image_path = os.path.join(path, new_image_name)
             fh.write("{} {}\n".format(os.path.join("train", cat, new_image_name), idx))
             if os.path.exists(new_image_path):
-                continue
+                try:
+                    skimage.io.imread(new_image_path)
+                except:
+                    pass
+                else:
+                    continue
 
             new_image = change_saturation(image, saturation)
             skimage.io.imsave(new_image_path, new_image)
